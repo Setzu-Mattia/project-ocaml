@@ -1,7 +1,6 @@
 type ide = string;;
-  
 type loc = int;;
-
+  
 type exp = 
         Eint of int 
       | Ebool of bool 
@@ -39,6 +38,24 @@ type typ =
   | Fun of typ * typ
   | Gen of generic;;
 
+type envVal =
+    Unbound
+  | DConst of exp * typ
+  | DVar of loc * typ
+;;
+
+type env = Env of (ide -> envVal);;
+
+let emptyEnv = Env (fun x -> Unbound);;
+  
+let bind (Env d) (x, v) =
+  Env(fun x' -> if x' = x then v
+		else d x')
+;;
+
+let applyEnv (Env d) x =
+  d x
+;;
   
 let rec type_inf expr =
   match expr with
@@ -75,7 +92,7 @@ let rec type_inf expr =
   
 let semprod (a, b) =
   match a, b with
-    Eint (a'), Eint (b') -> Eint ((a') * (b'));;
+    Eint (a'), Eint (b') -> Eint (a' * b');;
 
   
 let semsum (a, b) =
@@ -106,13 +123,11 @@ let semlessint (a, b) =
 
 let semeqint (a, b) =
   match a, b with
-    Eint (a'), Eint (b') when a' = b'  -> Ebool (true)
-  | _  -> Ebool (false);;
+    Eint (a'), Eint (b') -> Ebool (a' = b');;
 
 let semiszero a =
   match a with
-    Eint (0) -> Ebool (true)
-  | _  -> Ebool (false);;
+    Eint (n) -> Ebool (n = 0);;
 
 let semlesschar (a, b) =
   match a, b with
@@ -133,9 +148,8 @@ let semand (a, b) =
 let semnot b =
   match b with
     Ebool(b') -> Ebool (not b');;
-
-
   
+
 let rec sem expr =
   match expr with
     Empty -> Empty
@@ -155,4 +169,6 @@ let rec sem expr =
   | Or (b1, b2) -> semor (sem b1, sem b2)
   | And (b1, b2) -> semand(sem b1, sem b2)
   | Not (b) -> semnot (sem b)
+  | Ifthenelse (b, c0, c1) when sem b = Ebool(true) -> sem c0
+  | Ifthenelse (b, c0, c1) when sem b = Ebool(false) -> sem c1
 ;;
