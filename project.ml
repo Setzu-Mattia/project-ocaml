@@ -1,6 +1,8 @@
 type ide = string;;
 type loc = int;;
-  
+
+(************************ Expressions  ***************************)
+(*****************************************************************)
 type exp = 
         Eint of int 
       | Ebool of bool 
@@ -26,6 +28,9 @@ type exp =
       | Fun of ide list * exp
       | Apply of exp * exp list;;
 
+
+(*************************** Types  ******************************)
+(*****************************************************************)
   
 type generic = A | B | C | D | E | F | G | H | I | J | K | L | M | N | O | P | Q | R | S | T | U | V | W | X | Y | Z;;
 
@@ -38,6 +43,10 @@ type typ =
   | Fun of typ * typ
   | Gen of generic;;
 
+
+(************************ Environment ****************************)
+(*****************************************************************)
+  
 type envVal =
     Unbound
   | DConst of exp * typ
@@ -56,6 +65,35 @@ let bind (Env d) (x, v) =
 let applyEnv (Env d) x =
   d x
 ;;
+
+
+(*************************** Memory ******************************)
+(*****************************************************************)
+  
+type memFun = (loc -> exp);;
+
+type mem = Mem of (memFun * loc);;
+  
+let emptyMem () =
+  Mem ((fun l -> Empty), 0)
+;;
+ 
+let storeValue m (value, size) =
+  match m with
+    Mem (mem_fun, l) -> Mem ((fun l' -> if l' = l then value
+					else mem_fun l'),
+			     l + size)
+;;
+
+let getValue m l =
+  match m with
+    Mem (f, l') -> f l
+;;
+
+
+(************************ Type system  ***************************)
+(*****************************************************************)
+
   
 let rec type_inf expr =
   match expr with
