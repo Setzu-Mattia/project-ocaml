@@ -70,7 +70,7 @@ let rec type_inf expr =
   | Or (b1, b2) when type_inf b1 = Bool
 		     && type_inf b2 = Bool -> Bool
   | Not (b) when type_inf b = Bool -> Bool
-;;
+  | Ifthenelse (a,b,c) when type_inf a = Bool  -> int;;
 
   
 let semprod (a, b) =
@@ -134,7 +134,10 @@ let semnot b =
   match b with
     Ebool(b') -> Ebool (not b');;
 
-
+let semifthenelse (a, b, c) =
+  match a with
+    Ebool(a) -> b
+  | _ -> c;;
   
 let rec sem expr =
   match expr with
@@ -155,4 +158,7 @@ let rec sem expr =
   | Or (b1, b2) -> semor (sem b1, sem b2)
   | And (b1, b2) -> semand(sem b1, sem b2)
   | Not (b) -> semnot (sem b)
+  | Ifthenelse(a, b, c) -> semifthenelse(sem a,sem b,sem c)
 ;;
+
+Ifthenelse (Ebool(2==2),Eint(3),Eint(4));;
