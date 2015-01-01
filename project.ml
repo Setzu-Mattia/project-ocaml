@@ -1,8 +1,9 @@
 type ide = string;;
 type loc = int;;
-
+  
 (************************ Expressions  ***************************)
 (*****************************************************************)
+  
 type exp = 
         Eint of int 
       | Ebool of bool 
@@ -25,9 +26,8 @@ type exp =
       | Not of exp
       | Ifthenelse of exp * exp * exp
       | Let of (ide * exp) list * exp      
-      | Fun of ide list * exp
+      | Fun of (ide list) * exp
       | Apply of exp * exp list;;
-
 
 (*************************** Types  ******************************)
 (*****************************************************************)
@@ -40,20 +40,31 @@ type typ =
   | Bool
   | Char
   | List of typ
-  | Fun of typ * typ
+  | Fun of typ list * typ
   | Gen of generic;;
 
 
 (************************ Environment ****************************)
 (*****************************************************************)
-  
+
+(* Values stored in the environment and the invornment. *)
+(* Deep binding policy implies a closure for functions, ence the
+constructor
+
+    DFun of ide list * environment * body
+
+wich stands for
+
+    DFun (formal parameters,environment closure)
+
+*)
 type envVal =
     Unbound
   | DConst of exp * typ
   | DVar of loc * typ
-;;
-
-type env = Env of (ide -> envVal);;
+  | DFun of ide list * env * exp
+and
+env = Env of (ide -> envVal);;
 
 exception NameAlreadyDefined of ide;;
   
@@ -62,21 +73,27 @@ let emptyEnv = Env (fun x -> Unbound);;
 let bind (Env d) (x, v) =
   match v, d x with
     _, Unbound -> Env(fun x' -> if x' = x then v
-								else d x')
+				else d x')
   | DConst (v', t), _ -> raise (NameAlreadyDefined x)
   | DVar (l, t), DConst (_, _) -> raise (NameAlreadyDefined x)
 ;;
 
+(* Always overwrite a name binding *)
+let strongBind (Env d) (x,v) =
+  Env (fun x' -> if x' = x then v
+		 else d x');;
+  
 let applyEnv (Env d) x =
   d x
 ;;
   
-  
 (*************************** Memory ******************************)
 (*****************************************************************)
-  
+
+(* Actual memory implementation  *)
 type memFun = (loc -> exp);;
 
+(* 2nd parameter indexes the last memory location  *)
 type mem = Mem of (memFun * loc);;
   
 let emptyMem () =
@@ -147,100 +164,120 @@ let rec type_inf expr delta =
 (*****************************************************************)
 
 exception WrongType of exp;;
+exception DivisionByZero of exp;;
 
+(* Single expressions' semantics are defined in the following functions.
+Type check is handled in the sem function. *)
+  
 let semprod (a, b) =
   match a, b with
-    Eint (a'), Eint (b') -> Eint (a' * b');;
+    (Eint (a'), Int), (Eint (b'), Int) -> Eint (a' * b');;
 
   
 let semsum (a, b) =
   match a, b with
-    Eint (a'), Eint (b') -> Eint (a' + b');;
+    (Eint (a'), Int), (Eint (b'), Int) -> Eint (a' + b');;
 
   
 let semdiff (a, b) =
   match a, b with
-    Eint (a'), Eint (b') -> Eint (a' - b');;
+    (Eint (a'), Int), (Eint (b'), Int) -> Eint (a' - b');;
 
   
 let semmod (a, b) =
   match a, b with
-    Eint (a'), Eint (b') when b' != 0 -> Eint (a' mod b')
-  | Eint (a'), Eint (b') when b' = 0 -> failwith "error";;
+    (Eint (a'), Int), (Eint (b'), Int) when b' != 0 -> Eint (a' mod b')
+  | (Eint (a'), Int), (Eint (b'), Int) when b' = 0 -> raise (DivisionByZero(Eint(b')));;
 
   
 let semdiv (a, b) =
   match a, b with
-    Eint (a'), Eint (b') when b' != 0 -> Eint (a' / b')
-  | Eint (a'), Eint (b') when b' = 0 -> failwith "error";;
+    (Eint (a'), Int), (Eint (b'), Int) when b' != 0 -> Eint (a' / b')
+  | (Eint (a'), Int), (Eint (b'), Int) when b' = 0 -> raise (DivisionByZero(Eint(b')));;
 
+  
 let semlessint (a, b) =
   match a, b with
-    Eint (a'), Eint (b') when a' < b'  -> Ebool (true)
-  | _  -> Ebool (false);;
+    (Eint (a'), Int), (Eint (b'), Int) when a' < b'  -> Ebool (a' < b');;
+
 
 let semeqint (a, b) =
   match a, b with
-    Eint (a'), Eint (b') -> Ebool (a' = b');;
+    (Eint (a'), Int), (Eint (b'), Int) -> Ebool (a' = b');;
 
+  
 let semiszero a =
   match a with
-    Eint (n) -> Ebool (n = 0);;
+    (Eint (n), Int) -> Ebool (n = 0);;
 
+  
 let semlesschar (a, b) =
   match a, b with
-    Echar(a'), Echar (b') -> Ebool (a' = b');;
+    (Echar(a'), Char), (Echar (b'), Int) -> Ebool (a' = b');;
 
+  
 let semeqchar (a, b) =
   match a, b with
-    Echar(a'), Echar(b') -> Ebool (a' = b');;
+    (Echar(a'), Char), (Echar(b'), Int) -> Ebool (a' = b');;
 
 let semor (a, b) =
   match a, b with
-    Ebool(b1), Ebool(b2) -> Ebool (b1 || b2);;
+    (Ebool(b1), Bool), (Ebool(b2), Int) -> Ebool (b1 || b2);;
 
+  
 let semand (a, b) =
   match a, b with
-    Ebool(b1), Ebool(b2) -> Ebool (b1 && b2);;
+    (Ebool(b1), Bool), (Ebool(b2), Int) -> Ebool (b1 && b2);;
 
+  
 let semnot b =
   match b with
-    Ebool(b') -> Ebool (not b');;
-  
+    (Ebool(b'), Bool) -> Ebool (not b');;      
 
+  
 let rec sem expr delta =
   match expr with
-    Empty -> Empty
-  | Eint (a) -> Eint (a)
-  | Ebool (b) -> Ebool (b)
-  | Echar (c) -> Echar (c)
-  | Prod (a, b) when type_inf a delta = Int
-		     && type_inf b delta = Int -> semprod (sem a delta, sem b delta)
+    Eint (a) -> (Eint (a), Int)
+  | Ebool (b) -> (Ebool (b), Bool)
+  | Echar (c) -> (Echar (c), Char)
+  | Prod (a, b) when (type_inf a delta = Int)
+		     && (type_inf b delta = Int) -> (semprod (sem a delta, sem b delta), Int)
   | Sum (a, b) when type_inf a delta = Int
-		     && type_inf b delta = Int -> semsum (sem a delta, sem b delta)
+		     && type_inf b delta = Int -> (semsum (sem a delta, sem b delta), Int)
   | Diff (a, b) when type_inf a delta = Int
-		     && type_inf b delta = Int -> semdiff (sem a delta, sem b delta)
+		     && type_inf b delta = Int -> (semdiff (sem a delta, sem b delta), Int)
   | Mod (a, b) when type_inf a delta = Int
-		     && type_inf b delta = Int -> semmod (sem a delta, sem b delta)
+		     && type_inf b delta = Int -> (semmod (sem a delta, sem b delta), Int)
   | Div (a, b) when type_inf a delta = Int
-		     && type_inf b delta = Int -> semdiv (sem a delta, sem b delta)
+		     && type_inf b delta = Int -> (semdiv (sem a delta, sem b delta), Int)
   | Lessint (a, b) when type_inf a delta = Int
-		     && type_inf b delta = Int -> semlessint (sem a delta, sem b delta)
+		     && type_inf b delta = Int -> (semlessint (sem a delta, sem b delta), Int)
   | Eqint (a, b) when type_inf a delta = Int
-		     && type_inf b delta = Int -> semeqint (sem a delta, sem b delta)
-  | Iszero (a) when type_inf a delta = Int -> semiszero (sem a delta)
+		     && type_inf b delta = Int -> (semeqint (sem a delta, sem b delta), Int)
+  | Iszero (a) when type_inf a delta = Int -> (semiszero (sem a delta), Int)
   | Lesschar (a, b) when type_inf a delta = Char
-		     && type_inf b delta = Char-> semlesschar (sem a delta, sem b delta)
+		     && type_inf b delta = Char-> (semlesschar (sem a delta, sem b delta), Int)
   | Eqchar (a, b) when type_inf a delta = Char
-		     && type_inf b delta = Char -> semeqchar (sem a delta, sem b delta)
+		     && type_inf b delta = Char -> (semeqchar (sem a delta, sem b delta), Int)
   | Or (b1, b2) when type_inf b1 delta = Bool
-		     && type_inf b2 delta = Bool -> semor (sem b1 delta, sem b2 delta)
+		     && type_inf b2 delta = Bool -> (semor (sem b1 delta, sem b2 delta), Int)
   | And (b1, b2) when type_inf b1 delta = Bool
-		     && type_inf b2 delta = Bool -> semand(sem b1 delta, sem b2 delta)
-  | Not (b) when type_inf b delta = Bool -> semnot (sem b delta)
-  | Ifthenelse (b, c0, c1) when sem b delta = Ebool(true)
+		     && type_inf b2 delta = Bool -> (semand(sem b1 delta, sem b2 delta), Int)
+  | Not (b) when type_inf b delta = Bool -> (semnot (sem b delta), Int)
+  | Ifthenelse (b, c0, c1) when sem b delta = (Ebool(true), Bool)
 				&& type_inf c0 delta = type_inf c1 delta -> sem c0 delta
-  | Ifthenelse (b, c0, c1) when sem b delta = Ebool(false)
+  | Ifthenelse (b, c0, c1) when sem b delta = (Ebool(false), Bool)
 				&& type_inf c0 delta = type_inf c1 delta -> sem c1 delta
   | _ -> raise (WrongType expr)
+;;   
+  
+let buildFunctionEnvironment delta funName actualParameters =
+  match applyEnv delta funName with
+    Unbound -> raise (NotDefined(funName))
+  (* Bind formal with actual parameters *)
+  | DFun (formalParameters,_,_) -> let parametersCombined = List.combine formalParameters actualParameters in
+				   List.fold_right (fun (forPar,actPar) b ->
+						    let (actParEnvVal,actParTyp) = sem actPar delta in
+						    strongBind b (forPar,DConst((actParEnvVal,actParTyp))))
+						   parametersCombined delta
 ;;
