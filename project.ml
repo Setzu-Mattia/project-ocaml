@@ -62,7 +62,7 @@ type envVal =
     Unbound
   | DConst of exp * typ
   | DVar of loc * typ
-  | DFun of ide list * env * exp
+  | DFun of ide list * typ list * env * exp
 and
 env = Env of (ide -> envVal);;
 
@@ -86,6 +86,7 @@ let strongBind (Env d) (x,v) =
 let applyEnv (Env d) x =
   d x
 ;;
+
   
 (*************************** Memory ******************************)
 (*****************************************************************)
@@ -165,7 +166,11 @@ let rec type_inf expr delta =
 
 exception WrongType of exp;;
 exception DivisionByZero of exp;;
+exception WrongParametersNumber of (exp * typ) list;;
+exception WrongParameters;;
+exception WrongParametersType of exp;;
 
+  
 (* Single expressions' semantics are defined in the following functions.
 Type check is handled in the sem function. *)
   
@@ -220,6 +225,7 @@ let semeqchar (a, b) =
   match a, b with
     (Echar(a'), Char), (Echar(b'), Int) -> Ebool (a' = b');;
 
+  
 let semor (a, b) =
   match a, b with
     (Ebool(b1), Bool), (Ebool(b2), Int) -> Ebool (b1 || b2);;
@@ -233,11 +239,29 @@ let semand (a, b) =
 let semnot b =
   match b with
     (Ebool(b'), Bool) -> Ebool (not b');;      
-
   
-let rec sem expr delta =
-  match expr with
-    Eint (a) -> (Eint (a), Int)
+  
+(* Function local environment builder. Defined in the semantics section because it
+follows an eager evaluation policy, ence it needs the sem function. *)
+let rec typeCheck forParTypList actParList =
+  let combTypes = List.combine actParList forParTypList in
+  List.fold_right (fun ((actParVal,actParTyp), forParTyp) b -> if (actParTyp = forParTyp) then true && b
+							       else raise (WrongParametersType(actParVal))) combTypes true
+  and
+    
+  buildLocalEnvironment actPar forParIde delta' delta =
+    if List.length actPar != List.length forParIde then raise (WrongParametersNumber(actPar))						
+    else let combIdeAndVal = List.combine forParIde actPar in
+	 List.fold_right (fun (forParIde,(actParVal,actParTyp)) b -> strongBind b (forParIde,DConst(actParVal,actParTyp))) combIdeAndVal delta
+			 
+  and   
+    
+ sem expr delta =
+    match expr with
+      Den(x) -> let xVal = applyEnv delta x in (match xVal with
+						 DConst(v,t) -> (v,t)
+					       | DFun (forPar,parTyp,rho,body) -> (body,type_inf body rho))
+  | Eint (a) -> (Eint (a), Int)
   | Ebool (b) -> (Ebool (b), Bool)
   | Echar (c) -> (Echar (c), Char)
   | Prod (a, b) when (type_inf a delta = Int)
@@ -268,16 +292,8 @@ let rec sem expr delta =
 				&& type_inf c0 delta = type_inf c1 delta -> sem c0 delta
   | Ifthenelse (b, c0, c1) when sem b delta = (Ebool(false), Bool)
 				&& type_inf c0 delta = type_inf c1 delta -> sem c1 delta
+  | Apply (Fun(forParIde,body), actPar') -> let actPar = List.fold_right (fun a b -> (sem a delta) :: b) actPar' [] in
+					    let delta' = buildLocalEnvironment actPar forParIde emptyEnv delta in
+					    sem body delta'
   | _ -> raise (WrongType expr)
 ;;   
-  
-let buildFunctionEnvironment delta funName actualParameters =
-  match applyEnv delta funName with
-    Unbound -> raise (NotDefined(funName))
-  (* Bind formal with actual parameters *)
-  | DFun (formalParameters,_,_) -> let parametersCombined = List.combine formalParameters actualParameters in
-				   List.fold_right (fun (forPar,actPar) b ->
-						    let (actParEnvVal,actParTyp) = sem actPar delta in
-						    strongBind b (forPar,DConst((actParEnvVal,actParTyp))))
-						   parametersCombined delta
-;;

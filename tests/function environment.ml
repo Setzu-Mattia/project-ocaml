@@ -64,13 +64,24 @@ applyEnv localEnv "f";;
 
 (**************************************************************)
 
-  let gEnv0 = emptyEnv;;
-let gEnv0 = bind gEnv0 ("a",DConst(Echar('a'),type_inf (Echar('a')) gEnv0));;
-let gEnv0 = bind gEnv0 ("b",DConst(Echar('a'),type_inf (Echar('a')) gEnv0));;
-let gEnv0 = bind gEnv0 ("c",DConst(Echar('a'),type_inf (Echar('a')) gEnv0));;
+(* Build global environment *)
+let globalEnv = emptyEnv;;
+let globalEnv = bind globalEnv ("a",DConst(Echar('a'),type_inf (Echar('a')) globalEnv));;
+let globalEnv = bind globalEnv ("b",DConst(Echar('b'),type_inf (Echar('b')) globalEnv));;
+let globalEnv = bind globalEnv ("c",DConst(Echar('c'),type_inf (Echar('c')) globalEnv));;
+let globalEnv = bind globalEnv ("d",DConst(Echar('d'),type_inf (Echar('d')) globalEnv));;
 
-  
-let gEnv1 = bind gEnv0 ("foo",DFun(["a";"b";"c"],emptyEnv,Empty));;
-let lEnv = buildFunctionEnvironment gEnv1 "foo" [Eint(1);Sum(Eint(1),Eint(1));Sum(Eint(1),Sum(Eint(1),Eint(1)))];;
 
-applyEnv lEnv "a";;
+let localEnv = buildLocalEnvironment [Ebool(true),Bool;Ebool(true),Bool;Ebool(true),Bool;Ebool(true),Bool] [Bool;Bool;Bool;Bool] ["a";"b";"c";"h"] emptyEnv globalEnv;;
+
+applyEnv globalEnv "a";;
+applyEnv globalEnv "b";;
+applyEnv globalEnv "c";;
+applyEnv globalEnv "d";;
+applyEnv globalEnv "h";;
+      
+applyEnv localEnv "a";;
+applyEnv localEnv "b";;
+applyEnv localEnv "c";;
+applyEnv localEnv "d";;
+applyEnv localEnv "h";;
