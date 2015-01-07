@@ -57,7 +57,9 @@ wich stands for
 
     DFun (formal parameters,environment closure)
 
-*)
+ *)
+exception NameAlreadyDefined of ide;;
+  
 type envVal =
     Unbound
   | DConst of exp * typ
@@ -65,8 +67,6 @@ type envVal =
   | DFun of ide list * typ list * env * exp
 and
 env = Env of (ide -> envVal);;
-
-exception NameAlreadyDefined of ide;;
   
 let emptyEnv = Env (fun x -> Unbound);;
   
@@ -74,10 +74,9 @@ let bind (Env d) (x, v) =
   match v, d x with
     _, Unbound -> Env(fun x' -> if x' = x then v
 				else d x')
-  | DConst (v', t), _ -> raise (NameAlreadyDefined x)
-  | DVar (l, t), DConst (_, _) -> raise (NameAlreadyDefined x)
+  | _, _ -> raise (NameAlreadyDefined(x))
 ;;
-
+  
 (* Always overwrite a name binding *)
 let strongBind (Env d) (x,v) =
   Env (fun x' -> if x' = x then v
@@ -97,9 +96,7 @@ type memFun = (loc -> exp);;
 (* 2nd parameter indexes the last memory location  *)
 type mem = Mem of (memFun * loc);;
   
-let emptyMem () =
-  Mem ((fun l -> Empty), 0)
-;;
+let emptyMem = Mem ((fun l -> Empty), 0);;
 
 let storeValue m (value, size) =
   match m with
@@ -218,22 +215,22 @@ let semiszero a =
   
 let semlesschar (a, b) =
   match a, b with
-    (Echar(a'), Char), (Echar (b'), Int) -> Ebool (a' = b');;
+    (Echar(a'), Char), (Echar (b'), Char) -> Ebool (a' = b');;
 
   
 let semeqchar (a, b) =
   match a, b with
-    (Echar(a'), Char), (Echar(b'), Int) -> Ebool (a' = b');;
+    (Echar(a'), Char), (Echar(b'), Char) -> Ebool (a' = b');;
 
   
 let semor (a, b) =
   match a, b with
-    (Ebool(b1), Bool), (Ebool(b2), Int) -> Ebool (b1 || b2);;
+    (Ebool(b1), Bool), (Ebool(b2), Bool) -> Ebool (b1 || b2);;
 
   
 let semand (a, b) =
   match a, b with
-    (Ebool(b1), Bool), (Ebool(b2), Int) -> Ebool (b1 && b2);;
+    (Ebool(b1), Bool), (Ebool(b2), Bool) -> Ebool (b1 && b2);;
 
   
 let semnot b =
@@ -249,11 +246,21 @@ let rec typeCheck forParTypList actParList =
 							       else raise (WrongParametersType(actParVal))) combTypes true
   and
     
-  buildLocalEnvironment actPar forParIde delta' delta =
-    if List.length actPar != List.length forParIde then raise (WrongParametersNumber(actPar))						
+  buildLocEnvAnon actPar forParIde delta =
+    if List.length actPar != List.length forParIde then raise (WrongParametersNumber(actPar))
     else let combIdeAndVal = List.combine forParIde actPar in
 	 List.fold_right (fun (forParIde,(actParVal,actParTyp)) b -> strongBind b (forParIde,DConst(actParVal,actParTyp))) combIdeAndVal delta
 			 
+  and   
+
+    buildLocEnvDen actPar forParIde forParTyp delta =
+    if List.length forParIde != List.length actPar then raise (WrongParametersNumber(actPar))
+    else let typList = List.combine forParTyp actPar in
+	 let typeMatch = List.fold_right (fun (forParTyp,(actParVal,actParTyp)) b -> if forParTyp = actParTyp then b
+										     else raise(WrongParametersType(actParVal))) typList true in
+	 if typeMatch then buildLocEnvAnon actPar forParIde delta
+	 else raise WrongParameters
+  
   and   
     
  sem expr delta =
@@ -278,22 +285,26 @@ let rec typeCheck forParTypList actParList =
 		     && type_inf b delta = Int -> (semlessint (sem a delta, sem b delta), Int)
   | Eqint (a, b) when type_inf a delta = Int
 		     && type_inf b delta = Int -> (semeqint (sem a delta, sem b delta), Int)
-  | Iszero (a) when type_inf a delta = Int -> (semiszero (sem a delta), Int)
+  | Iszero (a) when type_inf a delta = Int -> (semiszero (sem a delta), Bool)
   | Lesschar (a, b) when type_inf a delta = Char
-		     && type_inf b delta = Char-> (semlesschar (sem a delta, sem b delta), Int)
+		     && type_inf b delta = Char-> (semlesschar (sem a delta, sem b delta), Bool)
   | Eqchar (a, b) when type_inf a delta = Char
-		     && type_inf b delta = Char -> (semeqchar (sem a delta, sem b delta), Int)
+		     && type_inf b delta = Char -> (semeqchar (sem a delta, sem b delta), Bool)
   | Or (b1, b2) when type_inf b1 delta = Bool
-		     && type_inf b2 delta = Bool -> (semor (sem b1 delta, sem b2 delta), Int)
+		     && type_inf b2 delta = Bool -> (semor (sem b1 delta, sem b2 delta), Bool)
   | And (b1, b2) when type_inf b1 delta = Bool
-		     && type_inf b2 delta = Bool -> (semand(sem b1 delta, sem b2 delta), Int)
+		     && type_inf b2 delta = Bool -> (semand(sem b1 delta, sem b2 delta), Bool)
   | Not (b) when type_inf b delta = Bool -> (semnot (sem b delta), Int)
   | Ifthenelse (b, c0, c1) when sem b delta = (Ebool(true), Bool)
 				&& type_inf c0 delta = type_inf c1 delta -> sem c0 delta
   | Ifthenelse (b, c0, c1) when sem b delta = (Ebool(false), Bool)
 				&& type_inf c0 delta = type_inf c1 delta -> sem c1 delta
   | Apply (Fun(forParIde,body), actPar') -> let actPar = List.fold_right (fun a b -> (sem a delta) :: b) actPar' [] in
-					    let delta' = buildLocalEnvironment actPar forParIde emptyEnv delta in
+					    let delta' = buildLocEnvAnon actPar forParIde delta in
 					    sem body delta'
+  | Apply (Den(f),actPar) -> match applyEnv delta f with
+			       DFun (forParIde,forParTyp,rho,body) -> let actPar = List.fold_right (fun a b -> (sem a delta) :: b) actPar [] in
+								      let delta' = buildLocEnvDen actPar forParIde forParTyp delta in
+								      sem body delta'
   | _ -> raise (WrongType expr)
-;;   
+;;
