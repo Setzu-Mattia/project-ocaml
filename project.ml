@@ -282,9 +282,9 @@ let rec typeCheck forParTypList actParList =
   | Div (a, b) when type_inf a delta = Int
 		     && type_inf b delta = Int -> (semdiv (sem a delta, sem b delta), Int)
   | Lessint (a, b) when type_inf a delta = Int
-		     && type_inf b delta = Int -> (semlessint (sem a delta, sem b delta), Int)
+		     && type_inf b delta = Int -> (semlessint (sem a delta, sem b delta), Bool)
   | Eqint (a, b) when type_inf a delta = Int
-		     && type_inf b delta = Int -> (semeqint (sem a delta, sem b delta), Int)
+		     && type_inf b delta = Int -> (semeqint (sem a delta, sem b delta), Bool)
   | Iszero (a) when type_inf a delta = Int -> (semiszero (sem a delta), Bool)
   | Lesschar (a, b) when type_inf a delta = Char
 		     && type_inf b delta = Char-> (semlesschar (sem a delta, sem b delta), Bool)
@@ -307,4 +307,109 @@ let rec typeCheck forParTypList actParList =
 								      let delta' = buildLocEnvDen actPar forParIde forParTyp delta in
 								      sem body delta'
   | _ -> raise (WrongType expr)
+;;
+
+sem (Apply(Fun(["a"],Den("a")),[Eint(1)])) emptyEnv;;
+  
+(* An sub-environment for types only. *)
+type ideTypInf = Inf of (ide -> typ);;
+type parInf = ParTyp of (ideTypInf * generic);;
+  
+exception ArgumentsOverflow;;
+exception ParameterTypeAmbiguity of ide * typ * typ;;
+exception TypeAmbiguity of typ * typ;;
+exception ParameterNotFound of ide;;
+
+let nextGen x =
+  match x with
+    A -> B | B -> C | C -> D | D -> E | E -> F
+    | F -> G | G -> H | H -> I | I -> J | J -> K
+    | K -> L | L -> M | M -> N | N -> O | O -> P
+    | P -> Q | Q -> R | R -> S | S -> T | T -> U
+    | U -> V | V -> W | W -> X | X -> Y | Y -> Z
+    | Z -> raise (ArgumentsOverflow)
+;;
+
+let emptyTypes = Inf (fun identifier -> raise(ParameterNotFound(identifier)));;
+
+(* Try and get the type: if not assigned yet, ideTypInf will raise
+an exception, so we can add the new type. Otherwise, the parameter
+type already has been defined, and we shall raise an exception. *)
+
+(* If id has no defined type I can add one.
+Otherwise raise an exception. *)
+(* Se c'è già (non lancia eccezione), allora lancia eccezione.
+   Altrimenti bind.  *)
+let bindTypPar (Inf(f)) id typ =
+  let isTyped = try let t = f id in true
+		with e -> false in
+  if isTyped then (Inf(f))
+  else Inf(fun id' -> if id' = id then typ
+		      else f id')
+;;
+  
+let applyTypPar (Inf(f)) id =
+  f id
+;;
+
+exception Temp of (exp list * typ * typ);;
+exception Bod of ide list;;
+  
+let rec type_inf_body f body par' delta t =
+  match body, t with
+    Den(p), _ -> (bindTypPar f p t, par')
+  | Sum(a,b), Int | Prod(a,b), Int | Div(a,b), Int | Diff(a,b), Int | Mod(a,b), Int
+  | Sum(a,b), Gen(_) | Prod(a,b), Gen(_) | Div(a,b), Gen(_) | Diff(a,b), Gen(_) | Mod(a,b), Gen(_) ->
+										   let (f',lg) = type_inf_body f a par' delta Int in
+  										   type_inf_body f' b par' delta Int
+  | Iszero(x), Bool | Iszero(x), Gen(_) ->
+		       type_inf_body f x par' delta Bool
+  | Lesschar(a,b), Bool | Eqchar(a,b), Bool
+  | Lesschar(a,b), Gen(_) | Eqchar(a,b), Gen(_) ->
+			     let (f',lg) = type_inf_body f a par' delta Char in
+  			     type_inf_body f' b par' delta Char
+  | And(a,b), Bool | Or(a,b), Bool
+  | And(a,b), Gen(_) | Or(a,b), Gen(_) ->
+			let (f',lg) = type_inf_body f a par' delta Bool in
+  			type_inf_body f' b par' delta Bool
+  | Not(b), Bool | Not(b), Gen(_) ->
+		    type_inf_body f b par' delta Bool
+  | Ifthenelse(b,c0,c1), Gen(_) ->
+     let (f',lg) = type_inf_body f b par' delta (Gen(A)) in
+     let (f'',lg') = type_inf_body f' c0 par' delta (Gen(A)) in
+     type_inf_body f'' c1 par' delta (Gen(A))
+  | Fun(forPar,body'), _ ->
+     type_inf_body f body' (par' @ forPar) delta (Gen(A))
+  | Apply(Fun(forPar,body'),actPar), t -> (let (eval,t') = sem body delta in
+					  match t, t = t' with
+					    Gen(_), _ | _, true -> type_inf_body f body' (par' @ forPar) delta t'
+					    | _, _ -> raise(Temp([body],t,t')))
+  | Apply(foo,actPar), t -> raise(Temp([foo],t,t))
+  | Sum(a,b), _ | Prod(a,b), _ | Div(a,b), _
+  | Diff(a,b), _ | Mod(a,b), _  -> raise(Temp([a;b],Int,t))	
+  | Iszero(x), _ | Iszero(x), _ -> raise(Temp([x],Bool,t))
+  | Lesschar(a,b), _ | Eqchar(a,b), _ -> raise(Temp([a;b],Char,t))
+  | And(a,b), _ | Or(a,b), _ -> raise(Temp([a;b],Bool,t))
+  | Not(b), _ -> raise(Temp([b],Bool,t))
+  | _ -> (f, par')
+
+  and
+
+
+type_inf_par foo delta types =
+  let type_inf_par' foo delta types gen =
+    match foo with
+      Empty -> failwith "empty body"
+    | Fun(forPar,body) -> let (types',forPar') = type_inf_body types body forPar delta (Gen(A)) in
+			   let rec parTypes par gen l =
+			     match par with
+			       [] -> l
+			     | hd::tl -> (try let t = applyTypPar types' hd in
+					      parTypes tl gen (l @ [(hd,t)])
+					  with e -> let gen' = nextGen gen in
+						    parTypes tl gen' (l @ [(hd,Gen(gen))]))
+			   in parTypes (forPar @ forPar') A []
+    | _ -> failwith "s"
+  in (type_inf_par' foo delta types A)
+
 ;;
