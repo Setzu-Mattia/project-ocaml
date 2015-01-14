@@ -1,5 +1,5 @@
 let p = type_inf_par (Fun(["a";"b";"c";"d";"e";"f";"g";"h";"i";"j"],
-			  Diff(Sum(Den("a"),Den("c")),Mod(Div(Den("j"),Den("g")),Prod(Den("f"),Den("h")))))) emptyEnv;;
+			  Diff(Sum(Den("a"),Den("c")),Mod(Div(Den("j"),Den("g")),Prod(Den("f"),Den("h")))))) emptyEnv emptyTypes;;
 
 
 let f = match p with

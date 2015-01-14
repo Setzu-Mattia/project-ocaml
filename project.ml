@@ -316,8 +316,9 @@ type ideTypInf = Inf of (ide -> typ);;
 type parInf = ParTyp of (ideTypInf * generic);;
   
 exception ArgumentsOverflow;;
+exception BodyError;;
 exception ParameterTypeAmbiguity of ide * typ * typ;;
-exception TypeAmbiguity of typ * typ;;
+exception TypeAmbiguity of exp * typ * typ;;
 exception ParameterNotFound of ide;;
 
 let nextGen x =
@@ -353,11 +354,16 @@ let applyTypPar (Inf(f)) id =
 ;;
 
 exception Temp of (exp list * typ * typ);;
-exception Bod of ide list;;
   
 let rec type_inf_body f body par' delta t =
   match body, t with
-    Den(p), _ -> (bindTypPar f p t, par')
+    (* Add check for ide in the environment *)
+    (* Generic and in the environment -> Bind type in the environment *)
+    (* Generic and not in the environment -> Bind Generic *)
+    (* Not generic -> Bind type *)
+    Den(p), _ -> (match t, applyEnv delta p with
+		    Gen(x), DConst(_,t') | Gen(x), DVar(_,t') -> (bindTypPar f p t', par')
+		  | _, _ -> (bindTypPar f p t, par'))
   | Sum(a,b), Int | Prod(a,b), Int | Div(a,b), Int | Diff(a,b), Int | Mod(a,b), Int
   | Sum(a,b), Gen(_) | Prod(a,b), Gen(_) | Div(a,b), Gen(_) | Diff(a,b), Gen(_) | Mod(a,b), Gen(_) ->
 										   let (f',lg) = type_inf_body f a par' delta Int in
@@ -387,10 +393,16 @@ let rec type_inf_body f body par' delta t =
   | Apply(foo,actPar), t -> raise(Temp([foo],t,t))
   | Sum(a,b), _ | Prod(a,b), _ | Div(a,b), _
   | Diff(a,b), _ | Mod(a,b), _  -> raise(Temp([a;b],Int,t))	
-  | Iszero(x), _ | Iszero(x), _ -> raise(Temp([x],Bool,t))
+  | Iszero(x), _ -> raise(Temp([x],Bool,t))
   | Lesschar(a,b), _ | Eqchar(a,b), _ -> raise(Temp([a;b],Char,t))
   | And(a,b), _ | Or(a,b), _ -> raise(Temp([a;b],Bool,t))
   | Not(b), _ -> raise(Temp([b],Bool,t))
+  | Ebool(_), Int -> raise(TypeAmbiguity(body,Int,Bool))
+  | Echar(_), Int -> raise(TypeAmbiguity(body,Int,Char))
+  | Eint(_), Bool -> raise(TypeAmbiguity(body,Bool,Int))
+  | Echar(_), Bool -> raise(TypeAmbiguity(body,Bool,Char))
+  | Eint(_), Char -> raise(TypeAmbiguity(body,Char,Int))
+  | Ebool(_), Char -> raise(TypeAmbiguity(body,Char,Bool))
   | _ -> (f, par')
 
   and
@@ -412,4 +424,41 @@ type_inf_par foo delta types =
     | _ -> failwith "s"
   in (type_inf_par' foo delta types A)
 
+;;
+
+
+let p = type_inf_par (Fun(["a";"b";"c";"d";"e";"f";"g";"h";"i";"j"],
+			  Diff(Sum(Den("a"),Den("c")),Mod(Div(Den("j"),Den("g")),Prod(Ebool(true),Den("h")))))) emptyEnv emptyTypes;;
+  
+let x = 1;;
+fun a -> x;;
+fun a b -> if a then b
+	   else 1;;
+    
+
+
+let rec type_inf_fun foo delta =
+  match foo with
+    Empty -> failwith "Not a function"
+  | Fun(forPar,body) -> (try let (types,forPar') = type_inf_body emptyTypes body forPar delta (Gen(A))in
+			     match body with
+			       Sum(_,_) | Prod(_,_) | Diff(_,_) | Mod(_,_)
+			     | Div(_,_) -> Int
+			     | Lessint(_,_) | Eqint(_,_) | Iszero(_) | Lesschar(_,_) | Eqchar(_,_) | Or(_,_) | And(_,_) | Not(_) -> Bool
+			     | Ifthenelse(b,c0,c1) -> type_inf_fun c0 delta
+			     | Fun(forPar',body') -> type_inf_fun body delta
+			     | Apply(foo,actPar) -> snd (sem body delta)
+			     | Let(envAss,clos) ->
+				let delta' = List.fold_right (fun (id,value) b ->
+							      bind b (id,DConst(value,type_inf value delta))) envAss delta in
+						   type_inf_fun clos delta'
+			 with e -> raise(BodyError))
+  | Sum(_,_) | Prod(_,_) | Diff(_,_) | Mod(_,_) | Div(_,_) -> Int
+  | Lessint(_,_) | Eqint(_,_) | Iszero(_) | Lesschar(_,_) | Eqchar(_,_) | Or(_,_) | And(_,_) | Not(_) -> Bool
+  | Ifthenelse(b,c0,c1) -> type_inf c0 delta
+  | Let(envAss,clos) ->
+     let delta' = List.fold_right (fun (id,value) b ->
+				   bind b (id,DConst(value,type_inf value delta))) envAss delta in
+     type_inf_fun clos delta'
+  | Apply(foo,actPar) -> type_inf_fun foo delta  
 ;;
