@@ -27,7 +27,10 @@ type exp =
       | Ifthenelse of exp * exp * exp
       | Let of (ide * exp) list * exp      
       | Fun of (ide list) * exp
-      | Apply of exp * exp list;;
+      | Apply of exp * exp list
+      | Raise of ide
+      | Try of exp * ide * exp
+;;
 
 (*************************** Types  ******************************)
 (*****************************************************************)
@@ -65,6 +68,7 @@ type envVal =
   | DConst of exp * typ
   | DVar of loc * typ
   | DFun of ide list * typ list * env * exp
+  | Exc
 and
 env = Env of (ide -> envVal);;
   
@@ -116,46 +120,6 @@ let getValue m l =
  
 exception TypeMismatch of exp;;
 exception NotDefined of ide;;
- 
-let rec type_inf expr delta =
-  match expr with
-    Eint (n) -> Int
-  | Ebool (b) -> Bool
-  | Echar (c) -> Char
-  | Cons (a1, a2) when (type_inf a1 delta) = (type_inf a2 delta) -> List (type_inf a1 delta)
-  | Prod (a, b) when type_inf a delta = Int
-		     && type_inf b delta = Int -> Int
-  | Sum (a, b) when type_inf a delta = Int
-		    && type_inf b delta = Int -> Int
-  | Diff (a, b) when type_inf a delta = Int
-		     && type_inf b delta = Int -> Int
-  | Mod (a, b) when type_inf a delta = Int
-		    && type_inf b delta = Int -> Int
-  | Div (a, b) when type_inf a delta = Int
-		    && type_inf b delta= Int -> Int
-  | Lessint (a, b) when type_inf a delta = Int
-		        && type_inf b delta = Int -> Bool
-  | Eqint (a, b) when type_inf a delta = Int
-		      && type_inf b delta = Int -> Bool
-  | Iszero (a) when type_inf a delta = Int -> Int
-  | Lesschar (a, b) when type_inf a delta = Char
-	       	         && type_inf b delta = Char -> Bool
-  | Eqchar (a, b) when type_inf a delta = Char
-		       && type_inf b delta = Char -> Bool
-  | And (b1, b2) when type_inf b1 delta = Bool
-		      && type_inf b2 delta = Bool -> Bool
-  | Or (b1, b2) when type_inf b1 delta = Bool
-		     && type_inf b2 delta = Bool -> Bool
-  | Not (b) when type_inf b delta = Bool -> Bool
-  | Ifthenelse (b, c0, c1) when type_inf c0 delta = type_inf c1 delta -> type_inf c0 delta
-  | Fun (par_l, r) -> type_inf r delta
-  | Apply (f, par_list) -> type_inf f delta
-  | Den (id) -> (match applyEnv delta id with
-					  DConst (v, t) -> t
-					| DVar (l, t) -> t
-					| Unbound -> raise (NotDefined id))
-  | _ -> raise (TypeMismatch expr)
-;;
 
 
 (************************** Semantics ****************************)
@@ -189,14 +153,6 @@ let nextGen x =
 
 let emptyTypes = Inf (fun identifier -> raise(ParameterNotFound(identifier)));;
 
-(* Try and get the type: if not assigned yet, ideTypInf will raise
-an exception, so we can add the new type. Otherwise, the parameter
-type already has been defined, and we shall raise an exception. *)
-
-(* If id has no defined type I can add one.
-Otherwise raise an exception. *)
-(* Se c'è già (non lancia eccezione), allora lancia eccezione.
-   Altrimenti bind.  *)
 let bindTypPar (Inf(f)) id typ =
   let isTyped = try let t = f id in true
     with e -> false in
@@ -208,11 +164,7 @@ let bindTypPar (Inf(f)) id typ =
 let applyTypPar (Inf(f)) id =
   f id
 ;;
-
-  
-(* Single expressions' semantics are defined in the following functions.
-Type check is handled in the sem function. *)
-  
+ 
 let semprod (a, b) =
   match a, b with
     (Eint (a'), Int), (Eint (b'), Int) -> Eint (a' * b');;
@@ -278,8 +230,10 @@ let semand (a, b) =
 let semnot b =
   match b with
     (Ebool(b'), Bool) -> Ebool (not b');;      
+
+ 
   
- let rec type_inf expr delta =
+let rec type_inf expr delta =
   match expr with
     Eint (n) -> Int
   | Ebool (b) -> Bool
@@ -440,6 +394,21 @@ typeCheck forParTypList actParList =
 	 else raise WrongParameters
   
   and   
+
+sem_raise ide delta =
+  match applyEnv delta ide with
+    Exc -> (Raise ide),(Gen(Z)),delta
+  | _ -> raise(NotDefined(ide))
+
+and
+
+sem_catch exprExec catchExpr ideToCatch delta =
+  match exprExec with
+    Raise(e) -> if e = ideToCatch then sem catchExpr delta
+		else sem_raise e delta
+  
+  and
+
     
  sem expr delta =
     match expr with
@@ -510,12 +479,14 @@ typeCheck forParTypList actParList =
 											 (v,t,e) -> (v,t) :: b) actPar' [] in
 					      let delta' = buildLocEnvAnon actPar forParIde delta in
 					      sem body delta'
-    | Apply (Den(f),actPar) -> match applyEnv delta f with
-				 DFun (forParIde,forParTyp,rho,body) -> let actPar = List.fold_right (fun a b -> match sem a delta with
-														   (v,t,e) -> (v,t) :: b) actPar [] in
-									let delta' = buildLocEnvDen actPar forParIde forParTyp delta in
-									sem body delta'
-			       | _ -> raise (WrongType expr)
+    | Apply (Den(f),actPar) -> (match applyEnv delta f with
+				  DFun (forParIde,forParTyp,rho,body) -> let actPar = List.fold_right (fun a b -> match sem a delta with
+														    (v,t,e) -> (v,t) :: b) actPar [] in
+									 let delta' = buildLocEnvDen actPar forParIde forParTyp delta in
+									 sem body delta'
+				| _ -> raise (WrongType expr))
+    | Raise (except) -> sem_raise except delta
+    | Try (tryExp,excep,catchExp) -> sem_catch tryExp catchExp excep delta
 
 
   and
@@ -536,4 +507,3 @@ typeCheck forParTypList actParList =
     | _ -> sem expr delta      
     
  ;;
-   
