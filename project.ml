@@ -39,34 +39,22 @@ type generic = A | B | C | D | E | F | G | H | I | J | K | L | M | N | O | P | Q
 
   
 type typ = 
-    Int 
-  | Bool
-  | Char
-  | List of typ
-  | Fun of typ list * typ
-  | Gen of generic;;
+    Tint 
+  | Tbool
+  | Tchar
+  | Tlist of typ
+  | Tfun of typ list * typ
+  | Tgen of generic;;
 
 
 (************************ Environment ****************************)
 (*****************************************************************)
 
-(* Values stored in the environment and the invornment. *)
-(* Deep binding policy implies a closure for functions, ence the
-constructor
-
-    DFun of ide list * environment * body
-
-wich stands for
-
-    DFun (formal parameters,environment closure)
-
- *)
 exception NameAlreadyDefined of ide;;
   
 type envVal =
     Unbound
   | DConst of exp * typ
-  | DVar of loc * typ
   | DFun of ide list * typ list * env * exp
   | Exc
 and
@@ -167,108 +155,108 @@ let applyTypPar (Inf(f)) id =
  
 let semprod (a, b) =
   match a, b with
-    (Eint (a'), Int), (Eint (b'), Int) -> Eint (a' * b');;
+    (Eint (a'), Tint), (Eint (b'), Tint) -> Eint (a' * b');;
 
   
 let semsum (a, b) =
   match a, b with
-    (Eint (a'), Int), (Eint (b'), Int) -> Eint (a' + b');;
+    (Eint (a'), Tint), (Eint (b'), Tint) -> Eint (a' + b');;
 
   
 let semdiff (a, b) =
   match a, b with
-    (Eint (a'), Int), (Eint (b'), Int) -> Eint (a' - b');;
+    (Eint (a'), Tint), (Eint (b'), Tint) -> Eint (a' - b');;
 
   
 let semmod (a, b) =
   match a, b with
-    (Eint (a'), Int), (Eint (b'), Int) when b' != 0 -> Eint (a' mod b')
-  | (Eint (a'), Int), (Eint (b'), Int) when b' = 0 -> raise (DivisionByZero(Eint(b')));;
+    (Eint (a'), Tint), (Eint (b'), Tint) when b' != 0 -> Eint (a' mod b')
+  | (Eint (a'), Tint), (Eint (b'), Tint) when b' = 0 -> raise (DivisionByZero(Eint(b')));;
 
   
 let semdiv (a, b) =
   match a, b with
-    (Eint (a'), Int), (Eint (b'), Int) when b' != 0 -> Eint (a' / b')
-  | (Eint (a'), Int), (Eint (b'), Int) when b' = 0 -> raise (DivisionByZero(Eint(b')));;
+    (Eint (a'), Tint), (Eint (b'), Tint) when b' != 0 -> Eint (a' / b')
+  | (Eint (a'), Tint), (Eint (b'), Tint) when b' = 0 -> raise (DivisionByZero(Eint(b')));;
 
   
 let semlessint (a, b) =
   match a, b with
-    (Eint (a'), Int), (Eint (b'), Int) when a' < b'  -> Ebool (a' < b');;
+    (Eint (a'), Tint), (Eint (b'), Tint) when a' < b'  -> Ebool (a' < b');;
 
 
 let semeqint (a, b) =
   match a, b with
-    (Eint (a'), Int), (Eint (b'), Int) -> Ebool (a' = b');;
+    (Eint (a'), Tint), (Eint (b'), Tint) -> Ebool (a' = b');;
 
   
 let semiszero a =
   match a with
-    (Eint (n), Int) -> Ebool (n = 0);;
+    (Eint (n), Tint) -> Ebool (n = 0);;
 
   
 let semlesschar (a, b) =
   match a, b with
-    (Echar(a'), Char), (Echar (b'), Char) -> Ebool (a' = b');;
+    (Echar(a'), Tchar), (Echar (b'), Tchar) -> Ebool (a' = b');;
 
   
 let semeqchar (a, b) =
   match a, b with
-    (Echar(a'), Char), (Echar(b'), Char) -> Ebool (a' = b');;
+    (Echar(a'), Tchar), (Echar(b'), Tchar) -> Ebool (a' = b');;
 
   
 let semor (a, b) =
   match a, b with
-    (Ebool(b1), Bool), (Ebool(b2), Bool) -> Ebool (b1 || b2);;
+    (Ebool(b1), Tbool), (Ebool(b2), Tbool) -> Ebool (b1 || b2);;
 
   
 let semand (a, b) =
   match a, b with
-    (Ebool(b1), Bool), (Ebool(b2), Bool) -> Ebool (b1 && b2);;
+    (Ebool(b1), Tbool), (Ebool(b2), Tbool) -> Ebool (b1 && b2);;
 
   
 let semnot b =
   match b with
-    (Ebool(b'), Bool) -> Ebool (not b');;      
+    (Ebool(b'), Tbool) -> Ebool (not b');;
 
- 
-  
 let rec type_inf expr delta =
   match expr with
-    Eint (n) -> Int
-  | Ebool (b) -> Bool
-  | Echar (c) -> Char
-  | Cons (a1, a2) when (type_inf a1 delta) = (type_inf a2 delta) -> List (type_inf a1 delta)
-  | Prod (a, b) when type_inf a delta = Int
-         && type_inf b delta = Int -> Int
-  | Sum (a, b) when type_inf a delta = Int
-        && type_inf b delta = Int -> Int
-  | Diff (a, b) when type_inf a delta = Int
-         && type_inf b delta = Int -> Int
-  | Mod (a, b) when type_inf a delta = Int
-        && type_inf b delta = Int -> Int
-  | Div (a, b) when type_inf a delta = Int
-        && type_inf b delta= Int -> Int
-  | Lessint (a, b) when type_inf a delta = Int
-            && type_inf b delta = Int -> Bool
-  | Eqint (a, b) when type_inf a delta = Int
-          && type_inf b delta = Int -> Bool
-  | Iszero (a) when type_inf a delta = Int -> Int
-  | Lesschar (a, b) when type_inf a delta = Char
-                   && type_inf b delta = Char -> Bool
-  | Eqchar (a, b) when type_inf a delta = Char
-           && type_inf b delta = Char -> Bool
-  | And (b1, b2) when type_inf b1 delta = Bool
-          && type_inf b2 delta = Bool -> Bool
-  | Or (b1, b2) when type_inf b1 delta = Bool
-         && type_inf b2 delta = Bool -> Bool
-  | Not (b) when type_inf b delta = Bool -> Bool
+    Eint (n) -> Tint
+  | Ebool (b) -> Tbool
+  | Echar (c) -> Tchar
+  | Cons (a1, a2) when (type_inf a1 delta) = (type_inf a2 delta) -> Tlist (type_inf a1 delta)
+  | Prod (a, b) when type_inf a delta = Tint
+         && type_inf b delta = Tint -> Tint
+  | Sum (a, b) when type_inf a delta = Tint
+        && type_inf b delta = Tint -> Tint
+  | Diff (a, b) when type_inf a delta = Tint
+         && type_inf b delta = Tint -> Tint
+  | Mod (a, b) when type_inf a delta = Tint
+        && type_inf b delta = Tint -> Tint
+  | Div (a, b) when type_inf a delta = Tint
+        && type_inf b delta= Tint -> Tint
+  | Lessint (a, b) when type_inf a delta = Tint
+            && type_inf b delta = Tint -> Tbool
+  | Eqint (a, b) when type_inf a delta = Tint
+          && type_inf b delta = Tint -> Tbool
+  | Iszero (a) when type_inf a delta = Tint -> Tint
+  | Lesschar (a, b) when type_inf a delta = Tchar
+                   && type_inf b delta = Tchar -> Tbool
+  | Eqchar (a, b) when type_inf a delta = Tchar
+           && type_inf b delta = Tchar -> Tbool
+  | And (b1, b2) when type_inf b1 delta = Tbool
+          && type_inf b2 delta = Tbool -> Tbool
+  | Or (b1, b2) when type_inf b1 delta = Tbool
+         && type_inf b2 delta = Tbool -> Tbool
+  | Not (b) when type_inf b delta = Tbool -> Tbool
   | Ifthenelse (b, c0, c1) when type_inf c0 delta = type_inf c1 delta -> type_inf c0 delta
-  | Fun (par_l, r) -> type_inf r delta
-  | Apply (f, par_list) -> type_inf f delta
+  | Fun (par_l, r) -> let parTyp = type_inf_par expr delta emptyTypes in
+					  let retTyp= type_inf_fun expr delta in
+					  (Tfun(parTyp,retTyp))
+  | Apply (f, par_list) -> let (v,t,e) = sem expr delta in
+										 t
   | Den (id) -> (match applyEnv delta id with
             DConst (v, t) -> t
-          | DVar (l, t) -> t
           | Unbound -> raise (NotDefined id))
   | _ -> raise (TypeMismatch expr)
 
@@ -276,52 +264,49 @@ let rec type_inf expr delta =
 
 type_inf_body f body par' delta t =
   match body, t with
-    (* Add check for ide in the environment *)
-    (* Generic and in the environment -> Bind type in the environment *)
-    (* Generic and not in the environment -> Bind Generic *)
-    (* Not generic -> Bind type *)
     Den(p), _ -> (match t, applyEnv delta p with
-		    Gen(x), DConst(_,t') | Gen(x), DVar(_,t') -> (bindTypPar f p t', par')
+		    Tgen(x), DConst(_,t') ->
+		    (bindTypPar f p t', par')
 		  | _, _ -> (bindTypPar f p t, par'))
-  | Sum(a,b), Int | Prod(a,b), Int | Div(a,b), Int | Diff(a,b), Int | Mod(a,b), Int
-  | Sum(a,b), Gen(_) | Prod(a,b), Gen(_) | Div(a,b), Gen(_) | Diff(a,b), Gen(_) | Mod(a,b), Gen(_) ->
-										   let (f',lg) = type_inf_body f a par' delta Int in
-  										   type_inf_body f' b par' delta Int
-  | Iszero(x), Bool | Iszero(x), Gen(_) ->
-		       type_inf_body f x par' delta Bool
-  | Lesschar(a,b), Bool | Eqchar(a,b), Bool
-  | Lesschar(a,b), Gen(_) | Eqchar(a,b), Gen(_) ->
-			     let (f',lg) = type_inf_body f a par' delta Char in
-  			     type_inf_body f' b par' delta Char
-  | And(a,b), Bool | Or(a,b), Bool
-  | And(a,b), Gen(_) | Or(a,b), Gen(_) ->
-			let (f',lg) = type_inf_body f a par' delta Bool in
-  			type_inf_body f' b par' delta Bool
-  | Not(b), Bool | Not(b), Gen(_) ->
-		    type_inf_body f b par' delta Bool
-  | Ifthenelse(b,c0,c1), Gen(_) ->
-     let (f',lg) = type_inf_body f b par' delta (Gen(A)) in
-     let (f'',lg') = type_inf_body f' c0 par' delta (Gen(A)) in
-     type_inf_body f'' c1 par' delta (Gen(A))
+  | Sum(a,b), Tint | Prod(a,b), Tint | Div(a,b), Tint | Diff(a,b), Tint | Mod(a,b), Tint
+  | Sum(a,b), Tgen(_) | Prod(a,b), Tgen(_) | Div(a,b), Tgen(_) | Diff(a,b), Tgen(_) | Mod(a,b), Tgen(_) ->
+										   let (f',lg) = type_inf_body f a par' delta Tint in
+  										   type_inf_body f' b par' delta Tint
+  | Iszero(x), Tbool | Iszero(x), Tgen(_) ->
+		       type_inf_body f x par' delta Tbool
+  | Lesschar(a,b), Tbool | Eqchar(a,b), Tbool
+  | Lesschar(a,b), Tgen(_) | Eqchar(a,b), Tgen(_) ->
+			     let (f',lg) = type_inf_body f a par' delta Tchar in
+  			     type_inf_body f' b par' delta Tchar
+  | And(a,b), Tbool | Or(a,b), Tbool
+  | And(a,b), Tgen(_) | Or(a,b), Tgen(_) ->
+			let (f',lg) = type_inf_body f a par' delta Tbool in
+  			type_inf_body f' b par' delta Tbool
+  | Not(b), Tbool | Not(b), Tgen(_) ->
+		    type_inf_body f b par' delta Tbool
+  | Ifthenelse(b,c0,c1), Tgen(_) ->
+     let (f',lg) = type_inf_body f b par' delta (Tgen(A)) in
+     let (f'',lg') = type_inf_body f' c0 par' delta (Tgen(A)) in
+     type_inf_body f'' c1 par' delta (Tgen(A))
   | Fun(forPar,body'), _ ->
-     type_inf_body f body' (par' @ forPar) delta (Gen(A))
+     type_inf_body f body' (par' @ forPar) delta (Tgen(A))
   | Apply(Fun(forPar,body'),actPar), t -> (let (eval,t',delta') = sem body delta in
 					  match t, t = t' with
-					    Gen(_), _ | _, true -> type_inf_body f body' (par' @ forPar) delta' t'
+					    Tgen(_), _ | _, true -> type_inf_body f body' (par' @ forPar) delta' t'
 					    | _, _ -> raise(TypeAmbiguity([body'],t,t')))
   | Apply(foo,actPar), t -> raise(TypeAmbiguity([foo],t,t))
   | Sum(a,b), _ | Prod(a,b), _ | Div(a,b), _
-  | Diff(a,b), _ | Mod(a,b), _  -> raise(TypeAmbiguity([a;b],Int,t))	
-  | Iszero(x), _ -> raise(TypeAmbiguity([x],Bool,t))
-  | Lesschar(a,b), _ | Eqchar(a,b), _ -> raise(TypeAmbiguity([a;b],Char,t))
-  | And(a,b), _ | Or(a,b), _ -> raise(TypeAmbiguity([a;b],Bool,t))
-  | Not(b), _ -> raise(TypeAmbiguity([b],Bool,t))
-  | Ebool(_), Int -> raise(TypeAmbiguity([body],Int,Bool))
-  | Echar(_), Int -> raise(TypeAmbiguity([body],Int,Char))
-  | Eint(_), Bool -> raise(TypeAmbiguity([body],Bool,Int))
-  | Echar(_), Bool -> raise(TypeAmbiguity([body],Bool,Char))
-  | Eint(_), Char -> raise(TypeAmbiguity([body],Char,Int))
-  | Ebool(_), Char -> raise(TypeAmbiguity([body],Char,Bool))
+  | Diff(a,b), _ | Mod(a,b), _  -> raise(TypeAmbiguity([a;b],Tint,t))	
+  | Iszero(x), _ -> raise(TypeAmbiguity([x],Tbool,t))
+  | Lesschar(a,b), _ | Eqchar(a,b), _ -> raise(TypeAmbiguity([a;b],Tchar,t))
+  | And(a,b), _ | Or(a,b), _ -> raise(TypeAmbiguity([a;b],Tbool,t))
+  | Not(b), _ -> raise(TypeAmbiguity([b],Tbool,t))
+  | Ebool(_), Tint -> raise(TypeAmbiguity([body],Tint,Tbool))
+  | Echar(_), Tint -> raise(TypeAmbiguity([body],Tint,Tchar))
+  | Eint(_), Tbool -> raise(TypeAmbiguity([body],Tbool,Tint))
+  | Echar(_), Tbool -> raise(TypeAmbiguity([body],Tbool,Tchar))
+  | Eint(_), Tchar -> raise(TypeAmbiguity([body],Tchar,Tint))
+  | Ebool(_), Tchar -> raise(TypeAmbiguity([body],Tchar,Tbool))
   | _ -> (f, par')
 
   and
@@ -329,15 +314,14 @@ type_inf_body f body par' delta t =
 type_inf_par foo delta types =
   let type_inf_par' foo delta types gen =
     match foo with
-      Empty -> failwith "empty body"
-    | Fun(forPar,body) -> let (types',forPar') = type_inf_body types body forPar delta (Gen(A)) in
+    Fun(forPar,body) -> let (types',forPar') = type_inf_body types body forPar delta (Tgen(A)) in
 			   let rec parTypes par gen l =
 			     match par with
 			       [] -> l
 			     | hd::tl -> (try let t = applyTypPar types' hd in
-					      parTypes tl gen (l @ [(hd,t)])
+					      parTypes tl gen (l @ [t])
 					  with e -> let gen' = nextGen gen in
-						    parTypes tl gen' (l @ [(hd,Gen(gen))]))
+						    parTypes tl gen' (l @ [Tgen(gen)]))
 			   in parTypes (forPar @ forPar') A []
   in (type_inf_par' foo delta types A)
 
@@ -345,12 +329,11 @@ and
   
 type_inf_fun foo delta =
   match foo with
-    Empty -> failwith "Not a function"
-  | Fun(forPar,body) -> (try let (types,forPar') = type_inf_body emptyTypes body forPar delta (Gen(A))in
+     Fun(forPar,body) -> (try let (types,forPar') = type_inf_body emptyTypes body forPar delta (Tgen(A))in
 			     match body with
 			       Sum(_,_) | Prod(_,_) | Diff(_,_) | Mod(_,_)
-			     | Div(_,_) -> Int
-			     | Lessint(_,_) | Eqint(_,_) | Iszero(_) | Lesschar(_,_) | Eqchar(_,_) | Or(_,_) | And(_,_) | Not(_) -> Bool
+			     | Div(_,_) -> Tint
+			     | Lessint(_,_) | Eqint(_,_) | Iszero(_) | Lesschar(_,_) | Eqchar(_,_) | Or(_,_) | And(_,_) | Not(_) -> Tbool
 			     | Ifthenelse(b,c0,c1) -> type_inf_fun c0 delta
 			     | Fun(forPar',body') -> type_inf_fun body delta
 			     | Apply(foo,actPar) -> (match sem body delta with
@@ -361,8 +344,8 @@ type_inf_fun foo delta =
 																		(value,t,e) -> t
 
 				with e -> raise(e))
-  | Sum(_,_) | Prod(_,_) | Diff(_,_) | Mod(_,_) | Div(_,_) -> Int
-  | Lessint(_,_) | Eqint(_,_) | Iszero(_) | Lesschar(_,_) | Eqchar(_,_) | Or(_,_) | And(_,_) | Not(_) -> Bool
+  | Sum(_,_) | Prod(_,_) | Diff(_,_) | Mod(_,_) | Div(_,_) -> Tint
+  | Lessint(_,_) | Eqint(_,_) | Iszero(_) | Lesschar(_,_) | Eqchar(_,_) | Or(_,_) | And(_,_) | Not(_) -> Tbool
   | Ifthenelse(b,c0,c1) -> type_inf c0 delta
   | Let(envAss,clos) ->
      let delta' = List.fold_right (fun (id,value) b ->
@@ -397,7 +380,7 @@ typeCheck forParTypList actParList =
 
 sem_raise ide delta =
   match applyEnv delta ide with
-    Exc -> (Raise ide),(Gen(Z)),delta
+    Exc -> (Raise ide),(Tgen(Z)),delta
   | _ -> raise(NotDefined(ide))
 
 and
@@ -415,57 +398,57 @@ sem_catch exprExec catchExpr ideToCatch delta =
       Den(x) -> let xVal = applyEnv delta x in (match xVal with
 						 DConst(v,t) -> (v,t,delta)
 					       | DFun (forPar,parTyp,rho,body) -> (body,type_inf body rho,delta))
-    | Eint (a) -> (Eint (a), Int, delta)
-    | Ebool (b) -> (Ebool (b), Bool, delta)
-    | Echar (c) -> (Echar (c), Char, delta)
-    | Prod (a, b) when (type_inf a delta = Int)
-		       && (type_inf b delta = Int) -> let (v,t,d) = sem a delta in
+    | Eint (a) -> (Eint (a), Tint, delta)
+    | Ebool (b) -> (Ebool (b), Tbool, delta)
+    | Echar (c) -> (Echar (c), Tchar, delta)
+    | Prod (a, b) when (type_inf a delta = Tint)
+		       && (type_inf b delta = Tint) -> let (v,t,d) = sem a delta in
 						      let (v',t',d') = sem b delta in 
-						      (semprod ((v,t), (v',t')), Int, delta)
-    | Sum (a, b) when type_inf a delta = Int
-		      && type_inf b delta = Int -> let (v,t,d) = sem a delta in
+						      (semprod ((v,t), (v',t')), Tint, delta)
+    | Sum (a, b) when type_inf a delta = Tint
+		      && type_inf b delta = Tint -> let (v,t,d) = sem a delta in
 						   let (v',t',d') = sem b delta in 
-						   (semsum ((v,t), (v',t')), Int, delta)
-    | Diff (a, b) when type_inf a delta = Int
-		       && type_inf b delta = Int -> let (v,t,d) = sem a delta in
+						   (semsum ((v,t), (v',t')), Tint, delta)
+    | Diff (a, b) when type_inf a delta = Tint
+		       && type_inf b delta = Tint -> let (v,t,d) = sem a delta in
 						    let (v',t',d') = sem b delta in 
-						    (semdiff ((v,t), (v',t')), Int, delta)
-    | Mod (a, b) when type_inf a delta = Int
-		      && type_inf b delta = Int -> let (v,t,d) = sem a delta in
+						    (semdiff ((v,t), (v',t')), Tint, delta)
+    | Mod (a, b) when type_inf a delta = Tint
+		      && type_inf b delta = Tint -> let (v,t,d) = sem a delta in
 						   let (v',t',d') = sem b delta in 
-						   (semmod ((v,t), (v',t')), Int, delta)
-    | Div (a, b) when type_inf a delta = Int
-		      && type_inf b delta = Int -> let (v,t,d) = sem a delta in
+						   (semmod ((v,t), (v',t')), Tint, delta)
+    | Div (a, b) when type_inf a delta = Tint
+		      && type_inf b delta = Tint -> let (v,t,d) = sem a delta in
 						   let (v',t',d') = sem b delta in 
-						   (semdiv ((v,t), (v',t')), Int, delta)
-    | Lessint (a, b) when type_inf a delta = Int
-			  && type_inf b delta = Int -> let (v,t,d) = sem a delta in
+						   (semdiv ((v,t), (v',t')), Tint, delta)
+    | Lessint (a, b) when type_inf a delta = Tint
+			  && type_inf b delta = Tint -> let (v,t,d) = sem a delta in
 						       let (v',t',d') = sem b delta in 
-						       (semlessint ((v,t), (v',t')), Int, delta)
-    | Eqint (a, b) when type_inf a delta = Int
-			&& type_inf b delta = Int -> let (v,t,d) = sem a delta in
+						       (semlessint ((v,t), (v',t')), Tint, delta)
+    | Eqint (a, b) when type_inf a delta = Tint
+			&& type_inf b delta = Tint -> let (v,t,d) = sem a delta in
 						     let (v',t',d') = sem b delta in 
-						     (semeqint ((v,t), (v',t')), Bool, delta)
-    | Iszero (a) when type_inf a delta = Int -> let (v,t,d) = sem a delta in
-						(semiszero (v,t), Bool, delta)
-    | Lesschar (a, b) when type_inf a delta = Char
-			   && type_inf b delta = Char-> let (v,t,d) = sem a delta in
+						     (semeqint ((v,t), (v',t')), Tbool, delta)
+    | Iszero (a) when type_inf a delta = Tint -> let (v,t,d) = sem a delta in
+						(semiszero (v,t), Tbool, delta)
+    | Lesschar (a, b) when type_inf a delta = Tchar
+			   && type_inf b delta = Tchar-> let (v,t,d) = sem a delta in
 							let (v',t',d') = sem b delta in 
-							(semlesschar ((v,t), (v',t')), Bool, delta)
-    | Eqchar (a, b) when type_inf a delta = Char
-			 && type_inf b delta = Char -> let (v,t,d) = sem a delta in
+							(semlesschar ((v,t), (v',t')), Tbool, delta)
+    | Eqchar (a, b) when type_inf a delta = Tchar
+			 && type_inf b delta = Tchar -> let (v,t,d) = sem a delta in
 						       let (v',t',d') = sem b delta in 
-						       (semeqchar ((v,t), (v',t')), Bool, delta)
-    | Or (b1, b2) when type_inf b1 delta = Bool
-		       && type_inf b2 delta = Bool -> let (v,t,d) = sem b1 delta in
+						       (semeqchar ((v,t), (v',t')), Tbool, delta)
+    | Or (b1, b2) when type_inf b1 delta = Tbool
+		       && type_inf b2 delta = Tbool -> let (v,t,d) = sem b1 delta in
 						      let (v',t',d') = sem b2 delta in 
-						      (semor ((v,t), (v',t')), Bool, delta)
-    | And (b1, b2) when type_inf b1 delta = Bool
-			&& type_inf b2 delta = Bool -> let (v,t,d) = sem b1 delta in
+						      (semor ((v,t), (v',t')), Tbool, delta)
+    | And (b1, b2) when type_inf b1 delta = Tbool
+			&& type_inf b2 delta = Tbool -> let (v,t,d) = sem b1 delta in
 						       let (v',t',d') = sem b2 delta in 
-						       (semand ((v,t), (v',t')), Bool, delta)
-    | Not (b) when type_inf b delta = Bool -> let (v,t,d) = sem b delta in
-					      (semnot (v,t), Bool, delta)
+						       (semand ((v,t), (v',t')), Tbool, delta)
+    | Not (b) when type_inf b delta = Tbool -> let (v,t,d) = sem b delta in
+					      (semnot (v,t), Tbool, delta)
     | Ifthenelse (b, c0, c1) -> (match sem b delta, (type_inf c0 delta) = (type_inf c1 delta) with
 				   (Ebool(true),_,_), true -> sem c0 delta
 				 | _ -> raise(BodyError))
