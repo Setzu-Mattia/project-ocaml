@@ -35,7 +35,7 @@ type exp =
 (*************************** Types  ******************************)
 (*****************************************************************)
   
-type generic = A | B | C | D | E | F | G | H | I | J | K | L | M | N | O | P | Q | R | S | T | U | V | W | X | Y | Z;;
+type generic = string;;
 
   
 type typ = 
@@ -123,22 +123,36 @@ exception WrongParametersType of exp;;
 type ideTypInf = Inf of (ide -> typ);;
 type parInf = ParTyp of (ideTypInf * generic);;
   
-exception ArgumentsOverflow;;
 exception BodyError;;
 exception ParameterTypeAmbiguity of ide * typ * typ;;
 exception TypeAmbiguity of exp list * typ * typ;;
 exception ParameterNotFound of ide;;
+exception DuplicateParameters;;
 
-let nextGen x =
+let nextLetter x =
   match x with
-    A -> B | B -> C | C -> D | D -> E | E -> F
-    | F -> G | G -> H | H -> I | I -> J | J -> K
-    | K -> L | L -> M | M -> N | N -> O | O -> P
-    | P -> Q | Q -> R | R -> S | S -> T | T -> U
-    | U -> V | V -> W | W -> X | X -> Y | Y -> Z
-    | Z -> raise (ArgumentsOverflow)
+    "A" -> "B" | "B" -> "C" | "C" -> "D" | "D" -> "E" | "E" -> "F"
+    | "F" -> "G" | "G" -> "H" | "H" -> "I" | "I" -> "J" | "J" -> "K"
+    | "K" -> "L" | "L" -> "M" | "M" -> "N" | "N" -> "O" | "O" -> "P"
+    | "P" -> "Q" | "Q" -> "R" | "R" -> "S" | "S" -> "T" | "T" -> "U"
+    | "U" -> "V" | "V" -> "W" | "W" -> "X" | "X" -> "Y" | "Y" -> "Z"
+    | "Z" -> "A"
 ;;
-
+  
+let nextGen lastGen =  
+  let getNumber s =
+  if String.length s > 1 then 
+    let stringNumber = String.sub s 1 (String.length s - 1) in
+    int_of_string(stringNumber)
+  else 0 in
+  let lastNum = getNumber lastGen in
+  let lastLetter = String.make 1 (String.get lastGen 0) in
+  match String.length lastGen > 1, String.make 1 (String.get lastGen 0) with
+    false, "Z" -> (nextLetter "Z")^(string_of_int(lastNum + 1))
+  | false, _ -> nextLetter lastLetter
+  | true, "Z" -> (nextLetter "Z")^(string_of_int(lastNum + 1))
+  | true, _ -> (nextLetter lastLetter)^(string_of_int(lastNum));;
+    
 let emptyTypes = Inf (fun identifier -> raise(ParameterNotFound(identifier)));;
 
 let bindTypPar (Inf(f)) id typ =
@@ -219,6 +233,12 @@ let semnot b =
   match b with
     (Ebool(b'), Tbool) -> Ebool (not b');;
 
+let rec checkDupPar l =
+  match l with
+    [] -> false
+  | hd::tl -> if List.exists (fun x -> x = hd) tl then true
+	      else checkDupPar tl;;
+  
 let rec type_inf expr delta =
   match expr with
     Eint (n) -> Tint
@@ -251,8 +271,8 @@ let rec type_inf expr delta =
   | Not (b) when type_inf b delta = Tbool -> Tbool
   | Ifthenelse (b, c0, c1) when type_inf c0 delta = type_inf c1 delta -> type_inf c0 delta
   | Fun (par_l, r) -> let parTyp = type_inf_par expr delta emptyTypes in
-					  let retTyp= type_inf_fun expr delta in
-					  (Tfun(parTyp,retTyp))
+		      let retTyp= type_inf_fun expr delta in
+		      (Tfun(parTyp,retTyp))
   | Apply (f, par_list) -> let (v,t,e) = sem expr delta in
 										 t
   | Den (id) -> (match applyEnv delta id with
@@ -285,11 +305,11 @@ type_inf_body f body par' delta t =
   | Not(b), Tbool | Not(b), Tgen(_) ->
 		    type_inf_body f b par' delta Tbool
   | Ifthenelse(b,c0,c1), Tgen(_) ->
-     let (f',lg) = type_inf_body f b par' delta (Tgen(A)) in
-     let (f'',lg') = type_inf_body f' c0 par' delta (Tgen(A)) in
-     type_inf_body f'' c1 par' delta (Tgen(A))
+     let (f',lg) = type_inf_body f b par' delta (Tgen("A")) in
+     let (f'',lg') = type_inf_body f' c0 par' delta (Tgen("A")) in
+     type_inf_body f'' c1 par' delta (Tgen("A"))
   | Fun(forPar,body'), _ ->
-     type_inf_body f body' (par' @ forPar) delta (Tgen(A))
+     type_inf_body f body' (par' @ forPar) delta (Tgen("A"))
   | Apply(Fun(forPar,body'),actPar), t -> (let (eval,t',delta') = sem body delta in
 					  match t, t = t' with
 					    Tgen(_), _ | _, true -> type_inf_body f body' (par' @ forPar) delta' t'
@@ -314,7 +334,8 @@ type_inf_body f body par' delta t =
 type_inf_par foo delta types =
   let type_inf_par' foo delta types gen =
     match foo with
-    Fun(forPar,body) -> let (types',forPar') = type_inf_body types body forPar delta (Tgen(A)) in
+      Fun(forPar,body) -> if checkDupPar forPar then raise(DuplicateParameters)
+			  else let (types',forPar') = type_inf_body types body [] delta (Tgen("A")) in
 			   let rec parTypes par gen l =
 			     match par with
 			       [] -> l
@@ -322,14 +343,14 @@ type_inf_par foo delta types =
 					      parTypes tl gen (l @ [t])
 					  with e -> let gen' = nextGen gen in
 						    parTypes tl gen' (l @ [Tgen(gen)]))
-			   in parTypes (forPar @ forPar') A []
-  in (type_inf_par' foo delta types A)
+			   in parTypes (forPar @ forPar') "A" []
+  in (type_inf_par' foo delta types "A")
 
 and 
   
 type_inf_fun foo delta =
   match foo with
-     Fun(forPar,body) -> (try let (types,forPar') = type_inf_body emptyTypes body forPar delta (Tgen(A))in
+     Fun(forPar,body) -> (try let (types,forPar') = type_inf_body emptyTypes body forPar delta (Tgen("A"))in
 			     match body with
 			       Sum(_,_) | Prod(_,_) | Diff(_,_) | Mod(_,_)
 			     | Div(_,_) -> Tint
@@ -363,24 +384,26 @@ typeCheck forParTypList actParList =
     
   buildLocEnvAnon actPar forParIde delta =
     if List.length actPar != List.length forParIde then raise (WrongParametersNumber(actPar))
-    else let combIdeAndVal = List.combine forParIde actPar in
-	 List.fold_right (fun (forParIde,(actParVal,actParTyp)) b -> strongBind b (forParIde,DConst(actParVal,actParTyp))) combIdeAndVal delta
+    else (if checkDupPar forParIde then raise(DuplicateParameters)
+	  else (let combIdeAndVal = List.combine forParIde actPar in
+	 List.fold_right (fun (forParIde,(actParVal,actParTyp)) b -> strongBind b (forParIde,DConst(actParVal,actParTyp))) combIdeAndVal delta))
 			 
   and   
 
     buildLocEnvDen actPar forParIde forParTyp delta =
     if List.length forParIde != List.length actPar then raise (WrongParametersNumber(actPar))
-    else let typList = List.combine forParTyp actPar in
+    else (if checkDupPar forParIde then raise(DuplicateParameters) else
+      let typList = List.combine forParTyp actPar in
 	 let typeMatch = List.fold_right (fun (forParTyp,(actParVal,actParTyp)) b -> if forParTyp = actParTyp then b
 										     else raise(WrongParametersType(actParVal))) typList true in
 	 if typeMatch then buildLocEnvAnon actPar forParIde delta
-	 else raise WrongParameters
+	 else raise WrongParameters)
   
   and   
 
 sem_raise ide delta =
   match applyEnv delta ide with
-    Exc -> (Raise ide),(Tgen(Z)),delta
+    Exc -> (Raise ide),(Tgen("Z")),delta
   | _ -> raise(NotDefined(ide))
 
 and
@@ -489,4 +512,4 @@ sem_catch exprExec catchExpr ideToCatch delta =
 						 sem body delta')
     | _ -> sem expr delta      
     
- ;;
+;;
