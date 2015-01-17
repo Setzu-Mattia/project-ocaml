@@ -79,30 +79,6 @@ let applyEnv (Env d) x =
 ;;
 
   
-(*************************** Memory ******************************)
-(*****************************************************************)
-
-(* Actual memory implementation  *)
-type memFun = (loc -> exp);;
-
-(* 2nd parameter indexes the last memory location  *)
-type mem = Mem of (memFun * loc);;
-  
-let emptyMem = Mem ((fun l -> Empty), 0);;
-
-let storeValue m (value, size) =
-  match m with
-    Mem (mem_fun, l) -> Mem ((fun l' -> if l' = l then value
-					else mem_fun l'),
-			     l + size)
-;;
-
-let getValue m l =
-  match m with
-    Mem (f, l') -> f l
-;;
-
-
 (************************ Type system  ***************************)
 (*****************************************************************)
  
